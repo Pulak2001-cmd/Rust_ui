@@ -2,10 +2,10 @@ from flask import *
 import tensorflow as tf
 import tensorflow_hub as hub
 import numpy as np
-import os
+import os, pickle
 app = Flask(__name__, static_folder='images') 
 app.secret_key='asdsdfsdfs13sdf_df%&'
-model = tf.keras.models.load_model('model/model.h5')
+# model = tf.keras.models.load_model('model/model.h5')
 users = {
     "pulakkumarghosh2001@gmail.com": "Pulak@2001",
     "admin@infomaticae.com": "admin",
@@ -70,15 +70,19 @@ def success():
         img = tf.keras.preprocessing.image.img_to_array(img)
         img = img/255.
         img = np.expand_dims(img, axis=0)
-        pred_value = model.predict(img)
-        prediction = pred_value[0][0]
-        print(pred_value)
-        print(prediction)
-        if prediction > 0.5:
-            result = 'No Corrosion'
-        else:
-            result = 'Corrosion'
-        return render_template("result2.html", name = f.filename, link=f.filename, severity=result, severite_score=float("{:.3f}".format(1-prediction)))  
+        with open('model/model.pkl', 'rb') as file:
+            model_architecture, model_weights = pickle.load(file)
+            loaded_model = tf.keras.models.model_from_json(model_architecture)
+            loaded_model.set_weights(model_weights)
+            pred_value = loaded_model.predict(img)
+            prediction = pred_value[0][0]
+            print(pred_value)
+            print(prediction)
+            if prediction > 0.5:
+                result = 'No Corrosion'
+            else:
+                result = 'Corrosion'
+            return render_template("result2.html", name = f.filename, link=f.filename, severity=result, severite_score=float("{:.3f}".format(1-prediction)))  
 
 @app.route('/folder', methods=['POST'])
 def folder_upload():
@@ -95,26 +99,30 @@ def folder_upload():
                 print('Failed to delete %s. Reason: %s' % (file_path, e))
         files = request.files.getlist('folderfile')
         data = []
-        for f in files:
-            f.save('images/'+f.filename)
-            img_path = 'images/'+f.filename
-            img = tf.keras.preprocessing.image.load_img(img_path, target_size=(128, 128, 3))
-            img = tf.keras.preprocessing.image.img_to_array(img)
-            img = img/255.
-            img = np.expand_dims(img, axis=0)
-            pred_value = model.predict(img)
-            prediction = pred_value[0][0]
-            if prediction < 0.5:
-                status = 'Corrosion'
-            else:
-                status = 'No Corrosion'
-            temp = {
-                'filename': f.filename,
-                'prediction_value': float("{:.3f}".format(1-prediction)),
-                'status': status
-            } 
-            data.append(temp)
-        return render_template('folder.html', data=data)
+        with open('model/model.pkl', 'rb') as file:
+            model_architecture, model_weights = pickle.load(file)
+            loaded_model = tf.keras.models.model_from_json(model_architecture)
+            loaded_model.set_weights(model_weights)
+            for f in files:
+                f.save('images/'+f.filename)
+                img_path = 'images/'+f.filename
+                img = tf.keras.preprocessing.image.load_img(img_path, target_size=(128, 128, 3))
+                img = tf.keras.preprocessing.image.img_to_array(img)
+                img = img/255.
+                img = np.expand_dims(img, axis=0)
+                pred_value = loaded_model.predict(img)
+                prediction = pred_value[0][0]
+                if prediction < 0.5:
+                    status = 'Corrosion'
+                else:
+                    status = 'No Corrosion'
+                temp = {
+                    'filename': f.filename,
+                    'prediction_value': float("{:.3f}".format(1-prediction)),
+                    'status': status
+                } 
+                data.append(temp)
+            return render_template('folder.html', data=data)
 
 
 if __name__ == '__main__':  
